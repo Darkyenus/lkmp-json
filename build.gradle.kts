@@ -1,10 +1,11 @@
 plugins {
     kotlin("multiplatform") version "1.7.22"
     id("org.jetbrains.kotlinx.kover") version "0.6.1"
+    `maven-publish`
 }
 
 group = "com.darkyen"
-version = "0.1"
+version = "0.2"
 
 repositories {
     mavenCentral()
