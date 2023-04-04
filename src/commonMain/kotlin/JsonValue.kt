@@ -79,7 +79,7 @@ sealed class JsonValue : Iterable<JsonValue> {
                         out.appendJsonString(value.first).append(": ")
                         value.second.appendJson(out, valueIndent)
                     }
-                    out.append('\n').appendIndent(indent).append(']')
+                    out.append('\n').appendIndent(indent).append('}')
                 }
             }
         }
