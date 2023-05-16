@@ -1,6 +1,7 @@
 import com.darkyen.json.JsonParseException
 import com.darkyen.json.JsonValue
 import com.darkyen.json.parseJson
+import com.darkyen.json.tokenizeJson
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +14,12 @@ class JsonTest {
 
     private fun testJson(json: String, expectedValue: JsonValue) {
         val parsed = parseJson(json).getOrThrow()
+        val tokens = tokenizeJson(json)
+        tokens.errorMessage?.let { throw JsonParseException(it) }
+        val parsedFromTokens = tokens.jsonValueAt(json, 0)
+
         assertEquals(expectedValue, parsed)
+        assertEquals(expectedValue, parsedFromTokens)
         assertEquals(expectedValue.hashCode(), parsed.hashCode())
         val roundTrip = parsed.toString()
         assertEquals(json, roundTrip)
@@ -27,6 +33,9 @@ class JsonTest {
                 fail("Expected JsonParseException, got $it")
             }
         })
+
+        val tokens = tokenizeJson(json)
+        assertNotNull(tokens.errorMessage)
     }
 
     @Test
