@@ -454,7 +454,7 @@ class JsonTokens(val source: CharSequence) {
     fun numberValue(tokenIndex: Int): Double {
         val begin = tokenPosition(tokenIndex)
         val end = tokenPosition(tokenIndex + 1) + 1
-        return CharSequenceView(source, begin, end - begin).toString().toDouble()
+        return source.substring(begin, end).toDouble()
     }
 
     fun isObjectEmpty(tokenIndexOfObjectBegin: Int): Boolean {
@@ -486,7 +486,7 @@ class JsonTokens(val source: CharSequence) {
                 while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
                     val nameStartPos = tokenPosition(endTokenIndex++) + 1
                     val nameEndPos = tokenPosition(endTokenIndex++)
-                    val name = jsonUnescape(CharSequenceView(source, nameStartPos, nameEndPos - nameStartPos)).toString()
+                    val name = jsonUnescape(CharSequenceView(source, nameStartPos, nameEndPos - nameStartPos))
                     val value = jsonValueAt(endTokenIndex)
                     objectValues.add(name to value)
                     endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
@@ -505,6 +505,84 @@ class JsonTokens(val source: CharSequence) {
                 JsonValue.Array(arrayValues)
             }
             else -> throw JsonValueException("Type $type does not start a json value")
+        }
+    }
+
+    fun jsonValueStringAt(tokenIndex: Int): String {
+        return when (val type = tokenType(tokenIndex)) {
+            JsonTokenType.NULL -> "null"
+            JsonTokenType.TRUE -> "true"
+            JsonTokenType.FALSE -> "false"
+            JsonTokenType.NUMBER_BEGIN,
+            JsonTokenType.STRING_BEGIN,
+            JsonTokenType.NAME_BEGIN,
+            JsonTokenType.OBJECT_BEGIN,
+            JsonTokenType.ARRAY_BEGIN -> {
+                val startPos = tokenPosition(tokenIndex)
+                val endToken = tokenIndex + valueTokenLength(tokenIndex) - 1
+                val endPos = tokenPosition(endToken) + 1
+                return source.substring(startPos, endPos)
+            }
+            else -> throw JsonValueException("Type $type does not start a json value")
+        }
+    }
+
+    fun tokenIndexOfArrayValue(tokenIndexOfArrayStart: Int, valueIndex: Int): Int {
+        var value = 0
+        forEachArrayValue(tokenIndexOfArrayStart) { valueTokenIndex ->
+            if (value == valueIndex) return valueTokenIndex
+            value += 1
+        }
+        return -1
+    }
+
+    fun tokenIndexOfObjectFieldValue(tokenIndexOfObjectStart: Int, fieldIndex: Int): Int {
+        var field = 0
+        forEachObjectField(tokenIndexOfObjectStart) { _, valueIndex ->
+            if (field == fieldIndex) return valueIndex
+            field += 1
+        }
+        return -1
+    }
+
+    fun tokenIndexOfObjectFieldName(tokenIndexOfObjectStart: Int, fieldIndex: Int): Int {
+        var field = 0
+        forEachObjectField(tokenIndexOfObjectStart) { nameIndex, _ ->
+            if (field == fieldIndex) return nameIndex
+            field += 1
+        }
+        return -1
+    }
+
+    fun arrayValueCount(tokenIndexOfArrayStart: Int): Int {
+        var count = 0
+        forEachArrayValue(tokenIndexOfArrayStart) { _ ->
+            count += 1
+        }
+        return count
+    }
+
+    fun objectFieldCount(tokenIndexOfObjectStart: Int): Int {
+        var count = 0
+        forEachObjectField(tokenIndexOfObjectStart) { _, _ ->
+            count += 1
+        }
+        return count
+    }
+
+    inline fun forEachArrayValue(tokenIndexOfArrayStart: Int, handleValue: (valueTokenIndex: Int) -> Unit) {
+        var endTokenIndex = tokenIndexOfArrayStart + 1
+        while (tokenType(endTokenIndex) != JsonTokenType.ARRAY_END) {
+            handleValue(endTokenIndex)
+            endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
+        }
+    }
+
+    inline fun forEachObjectField(tokenIndexOfObjectStart: Int, handleField: (nameTokenIndex: Int, valueTokenIndex: Int) -> Unit) {
+        var endTokenIndex = tokenIndexOfObjectStart + 1
+        while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
+            handleField(endTokenIndex, endTokenIndex + 2)
+            endTokenIndex += 2 + valueTokenLength(endTokenIndex)// Skip value
         }
     }
 }
