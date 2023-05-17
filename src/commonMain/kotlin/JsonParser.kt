@@ -347,7 +347,7 @@ fun parseJson(jsonString: CharSequence): Result<JsonValue> = runCatching {
     result
 }
 
-class JsonTokens {
+class JsonTokens(val source: CharSequence) {
     /**
      * Packed, from most significant bit down:
      * 4 bits: ordinal of [JsonTokenType]
@@ -443,7 +443,29 @@ class JsonTokens {
         }
     }
 
-    fun jsonValueAt(json: CharSequence, tokenIndex: Int): JsonValue {
+    /** Return the value of string that begins at given [tokenIndex] */
+    fun stringValue(tokenIndex: Int): String {
+        val begin = tokenPosition(tokenIndex) + 1
+        val end = tokenPosition(tokenIndex + 1)
+        return jsonUnescape(CharSequenceView(source, begin, end - begin))
+    }
+
+    /** Return the value of number that begins at given [tokenIndex] */
+    fun numberValue(tokenIndex: Int): Double {
+        val begin = tokenPosition(tokenIndex)
+        val end = tokenPosition(tokenIndex) + 1
+        return CharSequenceView(source, begin, end - begin).toString().toDouble()
+    }
+
+    fun isObjectEmpty(tokenIndexOfObjectBegin: Int): Boolean {
+        return tokenType(tokenIndexOfObjectBegin + 1) == JsonTokenType.OBJECT_END
+    }
+
+    fun isArrayEmpty(tokenIndexOfObjectBegin: Int): Boolean {
+        return tokenType(tokenIndexOfObjectBegin + 1) == JsonTokenType.ARRAY_END
+    }
+
+    fun jsonValueAt(tokenIndex: Int): JsonValue {
         return when (val type = tokenType(tokenIndex)) {
             JsonTokenType.NULL -> JsonValue.Null
             JsonTokenType.TRUE -> JsonValue.True
@@ -451,12 +473,12 @@ class JsonTokens {
             JsonTokenType.NUMBER_BEGIN -> {
                 val startPos = tokenPosition(tokenIndex)
                 val endPos = tokenPosition(tokenIndex + 1)
-                JsonValue.Number(CharSequenceView(json, startPos, endPos - startPos + 1), null)
+                JsonValue.Number(CharSequenceView(source, startPos, endPos - startPos + 1), null)
             }
             JsonTokenType.STRING_BEGIN -> {
                 val startPos = tokenPosition(tokenIndex) + 1
                 val endPos = tokenPosition(tokenIndex + 1)
-                JsonValue.String(CharSequenceView(json, startPos, endPos - startPos), null)
+                JsonValue.String(CharSequenceView(source, startPos, endPos - startPos), null)
             }
             JsonTokenType.OBJECT_BEGIN -> {
                 val objectValues = ArrayList<Pair<String, JsonValue>>()
@@ -464,8 +486,8 @@ class JsonTokens {
                 while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
                     val nameStartPos = tokenPosition(endTokenIndex++) + 1
                     val nameEndPos = tokenPosition(endTokenIndex++)
-                    val name = jsonUnescape(CharSequenceView(json, nameStartPos, nameEndPos - nameStartPos)).toString()
-                    val value = jsonValueAt(json, endTokenIndex)
+                    val name = jsonUnescape(CharSequenceView(source, nameStartPos, nameEndPos - nameStartPos)).toString()
+                    val value = jsonValueAt(endTokenIndex)
                     objectValues.add(name to value)
                     endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
                 }
@@ -476,7 +498,7 @@ class JsonTokens {
                 val arrayValues = ArrayList<JsonValue>()
                 var endTokenIndex = tokenIndex + 1
                 while (tokenType(endTokenIndex) != JsonTokenType.ARRAY_END) {
-                    arrayValues.add(jsonValueAt(json, endTokenIndex))
+                    arrayValues.add(jsonValueAt(endTokenIndex))
                     endTokenIndex += valueTokenLength(endTokenIndex)
                 }
                 1 + endTokenIndex - tokenIndex
@@ -526,7 +548,7 @@ fun tokenizeJson(jsonString: CharSequence): JsonTokens {
 
     var depth = 0
     val isDepthForObject = BitArray(10)
-    val tokens = JsonTokens()
+    val tokens = JsonTokens(jsonString)
 
     // Parsing states
     val jsonStringLength = jsonString.length
@@ -804,7 +826,7 @@ fun tokenizeJson(jsonString: CharSequence): JsonTokens {
 /**
  * Unescape correctly escaped JSON string content [value].
  */
-internal fun jsonUnescape(value: CharSequence): CharSequence {
+fun jsonUnescape(value: CharSequence): String {
     val length = value.length
     return buildString(length) {
         var i = 0
