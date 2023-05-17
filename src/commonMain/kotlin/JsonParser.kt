@@ -453,7 +453,7 @@ class JsonTokens(val source: CharSequence) {
     /** Return the value of number that begins at given [tokenIndex] */
     fun numberValue(tokenIndex: Int): Double {
         val begin = tokenPosition(tokenIndex)
-        val end = tokenPosition(tokenIndex) + 1
+        val end = tokenPosition(tokenIndex + 1) + 1
         return CharSequenceView(source, begin, end - begin).toString().toDouble()
     }
 
@@ -472,8 +472,8 @@ class JsonTokens(val source: CharSequence) {
             JsonTokenType.FALSE -> JsonValue.False
             JsonTokenType.NUMBER_BEGIN -> {
                 val startPos = tokenPosition(tokenIndex)
-                val endPos = tokenPosition(tokenIndex + 1)
-                JsonValue.Number(CharSequenceView(source, startPos, endPos - startPos + 1), null)
+                val endPos = tokenPosition(tokenIndex + 1) + 1
+                JsonValue.Number(CharSequenceView(source, startPos, endPos - startPos), null)
             }
             JsonTokenType.STRING_BEGIN -> {
                 val startPos = tokenPosition(tokenIndex) + 1

@@ -394,7 +394,7 @@ internal fun Appendable.appendIndent(indent: Int):Appendable {
     return this
 }
 
-internal fun Appendable.appendJsonString(value: CharSequence):Appendable {
+fun Appendable.appendJsonString(value: CharSequence):Appendable {
     append('"')
     for (c in value) {
         when (c) {
