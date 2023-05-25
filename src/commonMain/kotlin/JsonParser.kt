@@ -363,26 +363,26 @@ class JsonTokens(val source: CharSequence) {
         return JsonTokenType.VALUES[tokenTypesAndOffsets[tokenIndex] ushr 28]
     }
 
-    fun tokenPosition(tokenIndex: Int): Int {
+    fun tokenCharPosition(tokenIndex: Int): Int {
         return tokenTypesAndOffsets[tokenIndex] and 0x0FFF_FFFF
     }
 
-    fun tokenLength(tokenIndex: Int): Int {
+    fun tokenCharLength(tokenIndex: Int): Int {
         return when (tokenType(tokenIndex)) {
             JsonTokenType.NULL -> 4
             JsonTokenType.TRUE -> 4
             JsonTokenType.FALSE -> 5
             JsonTokenType.NUMBER_BEGIN -> {
                 if (tokenType(tokenIndex + 1) == JsonTokenType.NUMBER_END) 0
-                else tokenLength(tokenIndex + 1) + 1 - tokenLength(tokenIndex)
+                else tokenCharPosition(tokenIndex + 1) + 1 - tokenCharPosition(tokenIndex)
             }
             JsonTokenType.STRING_BEGIN -> {
                 if (tokenType(tokenIndex + 1) == JsonTokenType.STRING_END) 0
-                else tokenLength(tokenIndex + 1) + 1 - tokenLength(tokenIndex)
+                else tokenCharPosition(tokenIndex + 1) + 1 - tokenCharPosition(tokenIndex)
             }
             JsonTokenType.NAME_BEGIN -> {
                 if (tokenType(tokenIndex + 1) == JsonTokenType.NAME_END) 0
-                else tokenLength(tokenIndex + 1) + 1 - tokenLength(tokenIndex)
+                else tokenCharPosition(tokenIndex + 1) + 1 - tokenCharPosition(tokenIndex)
             }
             JsonTokenType.OBJECT_BEGIN,
             JsonTokenType.OBJECT_END,
@@ -390,7 +390,7 @@ class JsonTokens(val source: CharSequence) {
             JsonTokenType.ARRAY_END -> 1
             JsonTokenType.NUMBER_END,
             JsonTokenType.STRING_END,
-            JsonTokenType.NAME_END -> -1
+            JsonTokenType.NAME_END -> 1
         }
     }
 
@@ -445,15 +445,15 @@ class JsonTokens(val source: CharSequence) {
 
     /** Return the value of string that begins at given [tokenIndex] */
     fun stringValue(tokenIndex: Int): String {
-        val begin = tokenPosition(tokenIndex) + 1
-        val end = tokenPosition(tokenIndex + 1)
+        val begin = tokenCharPosition(tokenIndex) + 1
+        val end = tokenCharPosition(tokenIndex + 1)
         return jsonUnescape(CharSequenceView(source, begin, end - begin))
     }
 
     /** Return the value of number that begins at given [tokenIndex] */
     fun numberValue(tokenIndex: Int): Double {
-        val begin = tokenPosition(tokenIndex)
-        val end = tokenPosition(tokenIndex + 1) + 1
+        val begin = tokenCharPosition(tokenIndex)
+        val end = tokenCharPosition(tokenIndex + 1) + 1
         return source.substring(begin, end).toDouble()
     }
 
@@ -471,21 +471,21 @@ class JsonTokens(val source: CharSequence) {
             JsonTokenType.TRUE -> JsonValue.True
             JsonTokenType.FALSE -> JsonValue.False
             JsonTokenType.NUMBER_BEGIN -> {
-                val startPos = tokenPosition(tokenIndex)
-                val endPos = tokenPosition(tokenIndex + 1) + 1
+                val startPos = tokenCharPosition(tokenIndex)
+                val endPos = tokenCharPosition(tokenIndex + 1) + 1
                 JsonValue.Number(CharSequenceView(source, startPos, endPos - startPos), null)
             }
             JsonTokenType.STRING_BEGIN -> {
-                val startPos = tokenPosition(tokenIndex) + 1
-                val endPos = tokenPosition(tokenIndex + 1)
+                val startPos = tokenCharPosition(tokenIndex) + 1
+                val endPos = tokenCharPosition(tokenIndex + 1)
                 JsonValue.String(CharSequenceView(source, startPos, endPos - startPos), null)
             }
             JsonTokenType.OBJECT_BEGIN -> {
                 val objectValues = ArrayList<Pair<String, JsonValue>>()
                 var endTokenIndex = tokenIndex + 1
                 while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
-                    val nameStartPos = tokenPosition(endTokenIndex++) + 1
-                    val nameEndPos = tokenPosition(endTokenIndex++)
+                    val nameStartPos = tokenCharPosition(endTokenIndex++) + 1
+                    val nameEndPos = tokenCharPosition(endTokenIndex++)
                     val name = jsonUnescape(CharSequenceView(source, nameStartPos, nameEndPos - nameStartPos))
                     val value = jsonValueAt(endTokenIndex)
                     objectValues.add(name to value)
@@ -518,9 +518,9 @@ class JsonTokens(val source: CharSequence) {
             JsonTokenType.NAME_BEGIN,
             JsonTokenType.OBJECT_BEGIN,
             JsonTokenType.ARRAY_BEGIN -> {
-                val startPos = tokenPosition(tokenIndex)
+                val startPos = tokenCharPosition(tokenIndex)
                 val endToken = tokenIndex + valueTokenLength(tokenIndex) - 1
-                val endPos = tokenPosition(endToken) + 1
+                val endPos = tokenCharPosition(endToken) + 1
                 return source.substring(startPos, endPos)
             }
             else -> throw JsonValueException("Type $type does not start a json value")
