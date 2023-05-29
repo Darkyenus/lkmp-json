@@ -405,6 +405,34 @@ fun Appendable.appendJsonString(value: CharSequence):Appendable {
             '\t' -> append("\\t")
             '"' -> append("\\\"")
             '\\' -> append("\\\\")
+            in 0.toChar()..0x1F.toChar() -> {
+                // Needs special encoding
+                append("\\u")
+                    .append(HEX_DIGITS[(c.code shr 12) and 0xF])
+                    .append(HEX_DIGITS[(c.code shr 8) and 0xF])
+                    .append(HEX_DIGITS[(c.code shr 4) and 0xF])
+                    .append(HEX_DIGITS[(c.code shr 0) and 0xF])
+            }
+            else -> append(c)
+        }
+    }
+    return append('"')
+}
+
+/**
+ * Like [appendJsonString] but also escapes all codepoints that are represented by UTF-16 surrogate pairs.
+ */
+fun Appendable.appendJsonStringStrict(value: CharSequence):Appendable {
+    append('"')
+    for (c in value) {
+        when (c) {
+            '\b' -> append("\\b")
+            FORM_FEED -> append("\\f")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            '"' -> append("\\\"")
+            '\\' -> append("\\\\")
             in 0.toChar()..0x1F.toChar(),
             in 0xD800.toChar()..0xDFFF.toChar() -> {
                 // Needs special encoding
