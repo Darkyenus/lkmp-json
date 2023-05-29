@@ -367,21 +367,25 @@ class JsonTokens(val source: CharSequence) {
         return tokenTypesAndOffsets[tokenIndex] and 0x0FFF_FFFF
     }
 
+    /**
+     * Length of the token in characters, as amount of chars to advance by to get to the first character after the token.
+     * For BEGIN-END token pairs, this advances after the END token. END tokens are always 1 character long.
+     */
     fun tokenCharLength(tokenIndex: Int): Int {
         return when (tokenType(tokenIndex)) {
             JsonTokenType.NULL -> 4
             JsonTokenType.TRUE -> 4
             JsonTokenType.FALSE -> 5
             JsonTokenType.NUMBER_BEGIN -> {
-                if (tokenType(tokenIndex + 1) == JsonTokenType.NUMBER_END) 0
+                if (tokenType(tokenIndex + 1) != JsonTokenType.NUMBER_END) 0
                 else tokenCharPosition(tokenIndex + 1) + 1 - tokenCharPosition(tokenIndex)
             }
             JsonTokenType.STRING_BEGIN -> {
-                if (tokenType(tokenIndex + 1) == JsonTokenType.STRING_END) 0
+                if (tokenType(tokenIndex + 1) != JsonTokenType.STRING_END) 0
                 else tokenCharPosition(tokenIndex + 1) + 1 - tokenCharPosition(tokenIndex)
             }
             JsonTokenType.NAME_BEGIN -> {
-                if (tokenType(tokenIndex + 1) == JsonTokenType.NAME_END) 0
+                if (tokenType(tokenIndex + 1) != JsonTokenType.NAME_END) 0
                 else tokenCharPosition(tokenIndex + 1) + 1 - tokenCharPosition(tokenIndex)
             }
             JsonTokenType.OBJECT_BEGIN,
@@ -412,6 +416,10 @@ class JsonTokens(val source: CharSequence) {
         return this
     }
 
+    /**
+     * The length of the JSON value that starts at [tokenIndex] in tokens.
+     * Since END tokens don't start any JSON value, they return 0.
+     */
     fun valueTokenLength(tokenIndex: Int): Int {
         return when (tokenType(tokenIndex)) {
             JsonTokenType.NULL,
