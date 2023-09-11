@@ -7,7 +7,7 @@ class CharSequenceView(
 ): CharSequence {
     override fun get(index: Int): Char = if (index in indices) parent[offset + index] else throw IndexOutOfBoundsException("$index !in [0, $length)")
     override fun subSequence(startIndex: Int, endIndex: Int): CharSequence {
-        if (startIndex !in indices || endIndex !in indices || startIndex > endIndex) throw IndexOutOfBoundsException("$startIndex, $endIndex !in [0, $length)")
+        if (startIndex < 0 || startIndex > length || endIndex < 0 || endIndex > length || startIndex > endIndex) throw IndexOutOfBoundsException("$startIndex, $endIndex !in [0, $length]")
         if (startIndex == endIndex) return ""
         return CharSequenceView(parent, offset + startIndex, endIndex - startIndex)
     }

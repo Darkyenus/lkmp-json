@@ -1,3 +1,4 @@
+import com.darkyen.json.CharSequenceView
 import com.darkyen.json.JsonParseException
 import com.darkyen.json.JsonValue
 import com.darkyen.json.parseJson
@@ -16,7 +17,7 @@ class JsonTest {
         val parsed = parseJson(json).getOrThrow()
         val tokens = tokenizeJson(json)
         tokens.errorMessage?.let { throw JsonParseException(it) }
-        val parsedFromTokens = tokens.jsonValueAt(json, 0)
+        val parsedFromTokens = tokens.jsonValueAt(0)
 
         assertEquals(expectedValue, parsed)
         assertEquals(expectedValue, parsedFromTokens)
@@ -83,6 +84,24 @@ class JsonTest {
         testJson("\"\\n\"", JsonValue.String("${0xA.toChar()}"))
         testJson("\"\\r\"", JsonValue.String("${0xD.toChar()}"))
         testJson("\"\\t\"", JsonValue.String("${0x9.toChar()}"))
+    }
+
+    @Test
+    fun numberParsing() {
+        assertEquals(
+        5.0,
+            tokenizeJson("5").numberValue(0)
+        )
+        assertEquals(
+            5.0,
+            tokenizeJson("5.0").numberValue(0)
+        )
+        assertEquals(
+            5.0,
+            tokenizeJson("5.0000").numberValue(0)
+        )
+
+        CharSequenceView("_5_", 1, 1).substring(1, 2)
     }
 
     @Test
