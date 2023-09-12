@@ -1,6 +1,10 @@
 import com.darkyen.json.CharSequenceView
 import com.darkyen.json.JsonParseException
+import com.darkyen.json.JsonTokenType
+import com.darkyen.json.JsonTokens
 import com.darkyen.json.JsonValue
+import com.darkyen.json.appendJsonString
+import com.darkyen.json.appendJsonStringStrict
 import com.darkyen.json.parseJson
 import com.darkyen.json.tokenizeJson
 import kotlin.random.Random
@@ -13,10 +17,92 @@ class JsonTest {
 
     // https://www.ecma-international.org/wp-content/uploads/ECMA-404_2nd_edition_december_2017.pdf
 
+    private fun testIterateJsonTokens(tokens: JsonTokens, token: Int) {
+        val tt = tokens.tokenType(token)
+        if (tt != JsonTokenType.NAME_BEGIN) {
+            assertEquals(tokens.jsonValueAt(token), tokens.jsonValueTokensAt(token).jsonValueAt(0))
+        }
+        when (tt) {
+            JsonTokenType.NULL -> {
+                assertEquals(JsonValue.Null, tokens.jsonValueAt(token))
+                assertEquals("null", tokens.jsonValueStringAt(token))
+                assertEquals(JsonValue.Null, tokens.jsonValueTokensAt(token).jsonValueAt(0))
+                assertEquals(4, tokens.tokenCharLength(token))
+            }
+            JsonTokenType.TRUE -> {
+                assertEquals(JsonValue.True, tokens.jsonValueAt(token))
+                assertEquals("true", tokens.jsonValueStringAt(token))
+                assertEquals(JsonValue.True, tokens.jsonValueTokensAt(token).jsonValueAt(0))
+                assertEquals(4, tokens.tokenCharLength(token))
+            }
+            JsonTokenType.FALSE -> {
+                assertEquals(JsonValue.False, tokens.jsonValueAt(token))
+                assertEquals("false", tokens.jsonValueStringAt(token))
+                assertEquals(JsonValue.False, tokens.jsonValueTokensAt(token).jsonValueAt(0))
+                assertEquals(5, tokens.tokenCharLength(token))
+            }
+            JsonTokenType.NUMBER_BEGIN -> {
+                val num = tokens.numberValue(token)
+                assertEquals(num, tokens.jsonValueStringAt(token).toDouble(), Double.MIN_VALUE)
+                assertEquals(num, tokens.jsonValueAt(token).doubleValue(), Double.MIN_VALUE)
+                assertEquals(tokens.jsonValueStringAt(token).length, tokens.tokenCharLength(token))
+            }
+            JsonTokenType.STRING_BEGIN -> {
+                val stringValue = tokens.stringValue(token)
+                assertEquals(stringValue, tokens.jsonValueAt(token).stringValue())
+                assertEquals(tokens.jsonValueStringAt(token).length, tokens.tokenCharLength(token))
+
+                val sb = StringBuilder()
+                sb.appendJsonString(stringValue)
+                assertEquals(stringValue, tokenizeJson(sb).stringValue(0))
+
+                sb.setLength(0)
+                sb.appendJsonStringStrict(stringValue)
+                assertEquals(stringValue, tokenizeJson(sb).stringValue(0))
+            }
+            JsonTokenType.NAME_BEGIN -> {
+                assertEquals(tokens.tokenCharLength(token), tokens.jsonValueStringAt(token).length)
+                assertEquals(tokens.jsonValueStringAt(token).length, tokens.tokenCharLength(token))
+            }
+            JsonTokenType.OBJECT_BEGIN -> {
+                assertEquals(1, tokens.tokenCharLength(token))
+                val len = tokens.objectFieldCount(token)
+                assertEquals(len == 0, tokens.isObjectEmpty(token))
+                var index = 0
+                val endTokenIndex = tokens.forEachObjectField(token) { nameTokenIndex, valueTokenIndex ->
+                    assertEquals(nameTokenIndex, tokens.tokenIndexOfObjectFieldName(token, index))
+                    assertEquals(valueTokenIndex, tokens.tokenIndexOfObjectFieldValue(token, index))
+                    testIterateJsonTokens(tokens, nameTokenIndex)
+                    testIterateJsonTokens(tokens, valueTokenIndex)
+                    index += 1
+                }
+                assertEquals(endTokenIndex - token + 1, tokens.valueTokenLength(token))
+            }
+            JsonTokenType.ARRAY_BEGIN -> {
+                assertEquals(1, tokens.tokenCharLength(token))
+                val len = tokens.arrayElementCount(token)
+                assertEquals(len == 0, tokens.isArrayEmpty(token))
+                var index = 0
+                val endTokenIndex = tokens.forEachArrayElement(token) { elementTokenIndex ->
+                    assertEquals(elementTokenIndex, tokens.tokenIndexOfArrayElement(token, index))
+                    testIterateJsonTokens(tokens, elementTokenIndex)
+                    index += 1
+                }
+                assertEquals(endTokenIndex - token + 1, tokens.valueTokenLength(token))
+            }
+            else -> {
+                fail("Unexpected JsonToken type at $token: $tt")
+            }
+        }
+    }
+
     private fun testJson(json: String, expectedValue: JsonValue) {
         val parsed = parseJson(json).getOrThrow()
         val tokens = tokenizeJson(json)
         tokens.errorMessage?.let { throw JsonParseException(it) }
+
+        testIterateJsonTokens(tokens, 0)
+
         val parsedFromTokens = tokens.jsonValueAt(0)
 
         assertEquals(expectedValue, parsed)
@@ -24,6 +110,8 @@ class JsonTest {
         assertEquals(expectedValue.hashCode(), parsed.hashCode())
         val roundTrip = parsed.toString()
         assertEquals(json, roundTrip)
+
+        assertEquals(parsedFromTokens, tokenizeJson(parsedFromTokens.toPrettyString()).jsonValueAt(0))
     }
 
     private fun badJson(json: String) {
@@ -84,6 +172,11 @@ class JsonTest {
         testJson("\"\\n\"", JsonValue.String("${0xA.toChar()}"))
         testJson("\"\\r\"", JsonValue.String("${0xD.toChar()}"))
         testJson("\"\\t\"", JsonValue.String("${0x9.toChar()}"))
+        testJson("""{"a":true,"b":false,"c":null,"d":0,"e":99.99,"f":[],"g":{},"h":[true,null,0],"i":{"ia":1,"ib":["hello"]}}""",
+            JsonValue.Object("a" to JsonValue.True, "b" to JsonValue.False, "c" to JsonValue.Null, "d" to JsonValue.Number(0), "e" to JsonValue.Number(99.99),
+                "f" to JsonValue.Array(), "g" to JsonValue.Object(), "h" to JsonValue.Array(JsonValue.True, JsonValue.Null, JsonValue.Number(0)), "i" to JsonValue.Object("ia" to JsonValue.Number(1), "ib" to JsonValue.Array(JsonValue.String("hello")))))
+        testJson("""[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73]""",
+            JsonValue.Array((0..73).map { JsonValue.Number(it) }))
     }
 
     @Test
@@ -101,7 +194,7 @@ class JsonTest {
             tokenizeJson("5.0000").numberValue(0)
         )
 
-        CharSequenceView("_5_", 1, 1).substring(1, 2)
+        assertEquals("5", CharSequenceView("_5_", 1, 1).substring(0, 1))
     }
 
     @Test

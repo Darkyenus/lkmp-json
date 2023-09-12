@@ -432,26 +432,19 @@ class JsonTokens(val source: CharSequence) {
             JsonTokenType.NAME_BEGIN -> 2
             JsonTokenType.NAME_END -> 0
             JsonTokenType.OBJECT_BEGIN -> {
-                var endTokenIndex = tokenIndex + 1
-                while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
-                    endTokenIndex += 2 // Skip name
-                    endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
-                }
+                val endTokenIndex = forEachObjectField(tokenIndex) { _, _ -> }
                 1 + endTokenIndex - tokenIndex
             }
             JsonTokenType.OBJECT_END -> 0
             JsonTokenType.ARRAY_BEGIN -> {
-                var endTokenIndex = tokenIndex + 1
-                while (tokenType(endTokenIndex) != JsonTokenType.ARRAY_END) {
-                    endTokenIndex += valueTokenLength(endTokenIndex)
-                }
+                val endTokenIndex = forEachArrayElement(tokenIndex) { _ -> }
                 1 + endTokenIndex - tokenIndex
             }
             JsonTokenType.ARRAY_END -> 0
         }
     }
 
-    /** Return the value of string that begins at given [tokenIndex] */
+    /** Return the value of string or name that begins at given [tokenIndex] */
     fun stringValue(tokenIndex: Int): String {
         val begin = tokenCharPosition(tokenIndex) + 1
         val end = tokenCharPosition(tokenIndex + 1)
@@ -465,14 +458,19 @@ class JsonTokens(val source: CharSequence) {
         return source.substring(begin, end).toDouble()
     }
 
+    /** Given an object starting at [tokenIndexOfObjectBegin], return true if is has no fields */
     fun isObjectEmpty(tokenIndexOfObjectBegin: Int): Boolean {
         return tokenType(tokenIndexOfObjectBegin + 1) == JsonTokenType.OBJECT_END
     }
 
-    fun isArrayEmpty(tokenIndexOfObjectBegin: Int): Boolean {
-        return tokenType(tokenIndexOfObjectBegin + 1) == JsonTokenType.ARRAY_END
+    /** Given an array starting at [tokenIndexOfArrayBegin], return true if is has no elements */
+    fun isArrayEmpty(tokenIndexOfArrayBegin: Int): Boolean {
+        return tokenType(tokenIndexOfArrayBegin + 1) == JsonTokenType.ARRAY_END
     }
 
+    /**
+     * Return the value that starts at [tokenIndex] as [JsonValue].
+     */
     fun jsonValueAt(tokenIndex: Int): JsonValue {
         return when (val type = tokenType(tokenIndex)) {
             JsonTokenType.NULL -> JsonValue.Null
@@ -490,32 +488,27 @@ class JsonTokens(val source: CharSequence) {
             }
             JsonTokenType.OBJECT_BEGIN -> {
                 val objectValues = ArrayList<Pair<String, JsonValue>>()
-                var endTokenIndex = tokenIndex + 1
-                while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
-                    val nameStartPos = tokenCharPosition(endTokenIndex++) + 1
-                    val nameEndPos = tokenCharPosition(endTokenIndex++)
-                    val name = jsonUnescape(CharSequenceView(source, nameStartPos, nameEndPos - nameStartPos))
-                    val value = jsonValueAt(endTokenIndex)
+                forEachObjectField(tokenIndex) { nameTokenIndex, valueTokenIndex ->
+                    val name = stringValue(nameTokenIndex)
+                    val value = jsonValueAt(valueTokenIndex)
                     objectValues.add(name to value)
-                    endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
                 }
-                1 + endTokenIndex - tokenIndex
                 JsonValue.Object(objectValues)
             }
             JsonTokenType.ARRAY_BEGIN -> {
                 val arrayValues = ArrayList<JsonValue>()
-                var endTokenIndex = tokenIndex + 1
-                while (tokenType(endTokenIndex) != JsonTokenType.ARRAY_END) {
-                    arrayValues.add(jsonValueAt(endTokenIndex))
-                    endTokenIndex += valueTokenLength(endTokenIndex)
+                forEachArrayElement(tokenIndex) { valueTokenIndex ->
+                    arrayValues.add(jsonValueAt(valueTokenIndex))
                 }
-                1 + endTokenIndex - tokenIndex
                 JsonValue.Array(arrayValues)
             }
             else -> throw JsonValueException("Type $type does not start a json value")
         }
     }
 
+    /**
+     * Return the value that starts at [tokenIndex] as valid JSON.
+     */
     fun jsonValueStringAt(tokenIndex: Int): String {
         return when (val type = tokenType(tokenIndex)) {
             JsonTokenType.NULL -> "null"
@@ -535,63 +528,139 @@ class JsonTokens(val source: CharSequence) {
         }
     }
 
-    fun tokenIndexOfArrayValue(tokenIndexOfArrayStart: Int, valueIndex: Int): Int {
-        var value = 0
-        forEachArrayValue(tokenIndexOfArrayStart) { valueTokenIndex ->
-            if (value == valueIndex) return valueTokenIndex
-            value += 1
+    /**
+     * Return [JsonTokens] that contain just the value at the given tokenIndex.
+     * May return this.
+     */
+    fun jsonValueTokensAt(tokenIndex: Int): JsonTokens {
+        if (tokenIndex == 0 && errorMessage == null) return this
+        return when (val type = tokenType(tokenIndex)) {
+            JsonTokenType.NULL -> JsonTokens("null").apply { addToken(0, JsonTokenType.NULL) }
+            JsonTokenType.TRUE -> JsonTokens("true").apply { addToken(0, JsonTokenType.TRUE) }
+            JsonTokenType.FALSE -> JsonTokens("false").apply { addToken(0, JsonTokenType.FALSE) }
+            JsonTokenType.NUMBER_BEGIN,
+            JsonTokenType.STRING_BEGIN,
+            JsonTokenType.NAME_BEGIN,
+            JsonTokenType.OBJECT_BEGIN,
+            JsonTokenType.ARRAY_BEGIN -> {
+                val startPos = tokenCharPosition(tokenIndex)
+                val endToken = tokenIndex + valueTokenLength(tokenIndex) - 1
+                val endPos = tokenCharPosition(endToken) + 1
+                val source = source.subSequence(startPos, endPos)
+                val tokens = JsonTokens(source)
+                for (t in tokenIndex .. endToken) {
+                    tokens.addToken(tokenCharPosition(t) - startPos, tokenType(t))
+                }
+                tokens
+            }
+            else -> throw JsonValueException("Type $type does not start a json value")
+        }
+    }
+
+    /**
+     * Given an array that starts at [tokenIndexOfArrayStart], return the index at which the array's element at index [valueIndex]
+     * begins, or -1 if there is no such element
+     */
+    fun tokenIndexOfArrayElement(tokenIndexOfArrayStart: Int, valueIndex: Int): Int {
+        forEachArrayElementIndexed(tokenIndexOfArrayStart) { value, elementTokenIndex ->
+            if (value == valueIndex) return elementTokenIndex
         }
         return -1
     }
 
-    fun tokenIndexOfObjectFieldValue(tokenIndexOfObjectStart: Int, fieldIndex: Int): Int {
-        var field = 0
-        forEachObjectField(tokenIndexOfObjectStart) { _, valueIndex ->
-            if (field == fieldIndex) return valueIndex
-            field += 1
-        }
-        return -1
-    }
-
+    /**
+     * Given an object that starts at [tokenIndexOfObjectStart], return the index at which the object's field name at index [fieldIndex]
+     * begins, or -1 if there is no such element
+     */
     fun tokenIndexOfObjectFieldName(tokenIndexOfObjectStart: Int, fieldIndex: Int): Int {
-        var field = 0
-        forEachObjectField(tokenIndexOfObjectStart) { nameIndex, _ ->
+        forEachObjectFieldIndexed(tokenIndexOfObjectStart) { field, nameIndex, _ ->
             if (field == fieldIndex) return nameIndex
-            field += 1
         }
         return -1
     }
 
-    fun arrayValueCount(tokenIndexOfArrayStart: Int): Int {
-        var count = 0
-        forEachArrayValue(tokenIndexOfArrayStart) { _ ->
-            count += 1
+    /**
+     * Given an object that starts at [tokenIndexOfObjectStart], return the index at which the object's field value at index [fieldIndex]
+     * begins, or -1 if there is no such element
+     */
+    fun tokenIndexOfObjectFieldValue(tokenIndexOfObjectStart: Int, fieldIndex: Int): Int {
+        forEachObjectFieldIndexed(tokenIndexOfObjectStart) { field, _, valueIndex ->
+            if (field == fieldIndex) return valueIndex
         }
-        return count
+        return -1
     }
 
+    /**
+     * Given an array that starts at [tokenIndexOfArrayStart], return the amount of elements it has
+     */
+    fun arrayElementCount(tokenIndexOfArrayStart: Int): Int {
+        return forEachArrayElementIndexed(tokenIndexOfArrayStart) { _, _ -> }
+    }
+
+    /**
+     * Given an object that starts at [tokenIndexOfObjectStart], return the amount of fields it has
+     */
     fun objectFieldCount(tokenIndexOfObjectStart: Int): Int {
-        var count = 0
-        forEachObjectField(tokenIndexOfObjectStart) { _, _ ->
-            count += 1
-        }
-        return count
+        return forEachObjectFieldIndexed(tokenIndexOfObjectStart) { _, _, _ -> }
     }
 
-    inline fun forEachArrayValue(tokenIndexOfArrayStart: Int, handleValue: (valueTokenIndex: Int) -> Unit) {
+
+    /**
+     * Given an array that starts at [tokenIndexOfArrayStart], iterate its values - [handleValue] is called
+     * with index of each element value.
+     * @return the index of the end token
+     */
+    inline fun forEachArrayElement(tokenIndexOfArrayStart: Int, handleValue: (valueTokenIndex: Int) -> Unit): Int {
         var endTokenIndex = tokenIndexOfArrayStart + 1
         while (tokenType(endTokenIndex) != JsonTokenType.ARRAY_END) {
             handleValue(endTokenIndex)
             endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
         }
+        return endTokenIndex
     }
 
-    inline fun forEachObjectField(tokenIndexOfObjectStart: Int, handleField: (nameTokenIndex: Int, valueTokenIndex: Int) -> Unit) {
+    /**
+     * Variant of [forEachArrayElement] that also reports the index of the value.
+     * @returns the size of the array (amount of elements)
+     */
+    inline fun forEachArrayElementIndexed(tokenIndexOfArrayStart: Int, handleValue: (elementIndex: Int, elementTokenIndex: Int) -> Unit): Int {
+        var elementIndex = 0
+        var endTokenIndex = tokenIndexOfArrayStart + 1
+        while (tokenType(endTokenIndex) != JsonTokenType.ARRAY_END) {
+            handleValue(elementIndex, endTokenIndex)
+            elementIndex += 1
+            endTokenIndex += valueTokenLength(endTokenIndex)// Skip value
+        }
+        return elementIndex
+    }
+
+    /**
+     * Given an object that starts at [tokenIndexOfObjectStart], iterate its values - [handleField] is called
+     * with index of each field name and value tokens.
+     * @return the index of the end token
+     */
+    inline fun forEachObjectField(tokenIndexOfObjectStart: Int, handleField: (nameTokenIndex: Int, valueTokenIndex: Int) -> Unit): Int {
         var endTokenIndex = tokenIndexOfObjectStart + 1
         while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
             handleField(endTokenIndex, endTokenIndex + 2)
-            endTokenIndex += 2 + valueTokenLength(endTokenIndex)// Skip value
+            endTokenIndex += 2 + valueTokenLength(endTokenIndex + 2)// Skip value
         }
+        return endTokenIndex
+    }
+
+    /**
+     * Variant of [forEachObjectField] that also reports the index of the field.
+     * @returns the size of the object (amount of fields)
+     */
+    inline fun forEachObjectFieldIndexed(tokenIndexOfObjectStart: Int, handleField: (fieldIndex: Int, nameTokenIndex: Int, valueTokenIndex: Int) -> Unit): Int {
+        var fieldIndex = 0
+        var endTokenIndex = tokenIndexOfObjectStart + 1
+        while (tokenType(endTokenIndex) != JsonTokenType.OBJECT_END) {
+            handleField(fieldIndex, endTokenIndex, endTokenIndex + 2)
+            fieldIndex += 1
+            endTokenIndex += 2 + valueTokenLength(endTokenIndex + 2)// Skip value
+        }
+        return fieldIndex
     }
 }
 
