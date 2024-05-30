@@ -546,8 +546,7 @@ class JsonTokens(val source: CharSequence) {
                 val startPos = tokenCharPosition(tokenIndex)
                 val endToken = tokenIndex + valueTokenLength(tokenIndex) - 1
                 val endPos = tokenCharPosition(endToken) + 1
-                val source = source.subSequence(startPos, endPos)
-                val tokens = JsonTokens(source)
+                val tokens = JsonTokens(source.subSequence(startPos, endPos))
                 for (t in tokenIndex .. endToken) {
                     tokens.addToken(tokenCharPosition(t) - startPos, tokenType(t))
                 }
